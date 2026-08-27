@@ -78,7 +78,7 @@
             <f7-list-item class="block-footer margin-bottom-half" v-if="isInternalAuthEnabled()">
                 <div class="width-100 align-content-center">
                     <template v-if="isUserRegistrationEnabled()">
-                        <span style="margin-right: 2px;">{{ tt('Don\'t have an account?') }}</span>
+                        <span style="margin-inline-end: 2px;">{{ tt('Don\'t have an account?') }}</span>
                         <f7-link :class="{ 'disabled': loggingInByPassword || loggingInByOAuth2 }" href="/signup" :text="tt('Create an account')"></f7-link>
                     </template>
                     <span class="text-color-gray" v-else>{{ tt('User registration is disabled') }}</span>
