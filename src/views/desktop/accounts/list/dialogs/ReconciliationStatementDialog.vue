@@ -7,8 +7,8 @@
                                   :title="tt('Reconciliation Statement')" :cancel-button-title="tt('Close')"
                                   @cancel="close">
             <template #after-title>
-                <v-btn density="compact" color="default" variant="text"
-                       class="ms-2" :icon="true" :disabled="updatingLastReconciledTime"
+                <v-btn density="compact" color="default" variant="text" class="ms-2"
+                       :aria-label="tt('Refresh')" :icon="true" :disabled="updatingLastReconciledTime"
                        :loading="loading" @click="reload(true)">
                     <template #loader>
                         <v-progress-circular indeterminate size="20"/>
@@ -30,7 +30,7 @@
                                :false-name="tt('Transaction List')" :true-name="tt('Account Balance Trends')"
                                v-model="showAccountBalanceTrendsCharts"/>
 
-                <v-btn density="compact" color="default" variant="text" class="ms-2"
+                <v-btn density="compact" color="default" variant="text" class="ms-2" :aria-label="tt('Settings')"
                        :icon="true" :disabled="loading || updatingLastReconciledTime || !showAccountBalanceTrendsCharts">
                     <v-icon :icon="mdiTuneVertical" size="22" />
                     <v-menu activator="parent">
@@ -61,7 +61,7 @@
                         </v-list>
                     </v-menu>
                 </v-btn>
-                <v-btn density="compact" color="default" variant="text" class="ms-2"
+                <v-btn density="compact" color="default" variant="text" class="ms-2" :aria-label="tt('More')"
                        :icon="true" :disabled="loading || updatingLastReconciledTime">
                     <v-icon :icon="mdiDotsVertical" size="22" />
                     <v-menu activator="parent">
@@ -75,19 +75,19 @@
                                          v-if="canUpdateAccountCloseBalance"></v-list-item>
                             <v-divider class="my-2"/>
                             <v-list-item :prepend-icon="mdiComma"
-                                         :disabled="!reconciliationStatements || !reconciliationStatements.transactions || reconciliationStatements.transactions.length < 1"
+                                         :disabled="!reconciliationStatements || !reconciliationStatements.transactions || reconciliationStatements.transactions.length < 1 || useCommaDecimalSeparator"
                                          @click="exportReconciliationStatements(KnownFileType.CSV)">
-                                <v-list-item-title>{{ tt('Export to CSV (Comma-separated values) File') }}</v-list-item-title>
+                                <v-list-item-title>{{ tt('Save as CSV (Comma-separated values) File') }}</v-list-item-title>
                             </v-list-item>
                             <v-list-item :prepend-icon="mdiKeyboardTab"
                                          :disabled="!reconciliationStatements || !reconciliationStatements.transactions || reconciliationStatements.transactions.length < 1"
                                          @click="exportReconciliationStatements(KnownFileType.TSV)">
-                                <v-list-item-title>{{ tt('Export to TSV (Tab-separated values) File') }}</v-list-item-title>
+                                <v-list-item-title>{{ tt('Save as TSV (Tab-separated values) File') }}</v-list-item-title>
                             </v-list-item>
                             <v-list-item :prepend-icon="extendMdiSemicolon"
                                          :disabled="!reconciliationStatements || !reconciliationStatements.transactions || reconciliationStatements.transactions.length < 1"
                                          @click="exportReconciliationStatements(KnownFileType.SSV)">
-                                <v-list-item-title>{{ tt('Export to SSV (Semicolon-separated values) File') }}</v-list-item-title>
+                                <v-list-item-title>{{ tt('Save as SSV (Semicolon-separated values) File') }}</v-list-item-title>
                             </v-list-item>
                         </v-list>
                     </v-menu>
@@ -101,9 +101,7 @@
                         <span>{{ tt('All') }}</span>
                     </div>
                     <div class="text-body-large text-wrap" v-if="startTime || endTime">
-                        <span>{{ displayStartDateTime }}</span>
-                        <span> - </span>
-                        <span>{{ displayEndDateTime }}</span>
+                        <span>{{ formatRange(displayStartDateTime, displayEndDateTime) }}</span>
                     </div>
 
                     <div class="d-flex align-center mt-1 overflow-x-auto">
@@ -181,13 +179,16 @@
                     :no-data-text="loading ? '' : tt('No transaction data')"
                     v-model:items-per-page="countPerPage"
                     v-model:page="currentPage"
+                    @click="focusTableScrollContainer"
                     v-if="!showAccountBalanceTrendsCharts"
                 >
                     <template #item.time="{ item }">
-                        <span>{{ getDisplayDateTime(item) }}</span>
-                        <v-chip class="ms-1" variant="flat" color="grey" size="x-small"
-                                v-if="!isSameAsDefaultTimezoneOffsetMinutes(item)">{{ getDisplayTimezone(item) }}</v-chip>
-                        <v-tooltip activator="parent" v-if="!isSameAsDefaultTimezoneOffsetMinutes(item)">{{ getDisplayTimeInDefaultTimezone(item) }}</v-tooltip>
+                        <div class="d-flex align-center">
+                            <span>{{ getDisplayDateTime(item) }}</span>
+                            <v-chip class="ms-1" variant="flat" color="grey" size="x-small"
+                                    v-if="!isSameAsDefaultTimezoneOffsetMinutes(item)">{{ getDisplayTimezone(item) }}</v-chip>
+                            <v-tooltip activator="parent" v-if="!isSameAsDefaultTimezoneOffsetMinutes(item)">{{ getDisplayTimeInDefaultTimezone(item) }}</v-tooltip>
+                        </div>
                     </template>
                     <template #item.type="{ item }">
                         <v-chip label variant="outlined" size="x-small"
@@ -201,10 +202,10 @@
                                       :color="item.category?.color ?? ''"
                                       v-if="item.category && item.category?.color"></ItemIcon>
                             <v-icon size="24" :icon="mdiPencilBoxOutline" v-else-if="!item.category || !item.category?.color" />
-                            <span class="ms-2" v-if="item.type === TransactionType.ModifyBalance">
+                            <span class="ms-1" v-if="item.type === TransactionType.ModifyBalance">
                                 {{ tt('Modify Balance') }}
                             </span>
-                            <span class="ms-2" v-else-if="item.type !== TransactionType.ModifyBalance && item.category">
+                            <span class="ms-1" v-else-if="item.type !== TransactionType.ModifyBalance && item.category">
                                 {{ item.category?.name }}
                             </span>
                         </div>
@@ -215,7 +216,7 @@
                         <span v-if="item.type === TransactionType.Transfer && item.sourceAccountId !== item.destinationAccountId && getDisplaySourceAmount(item) !== getDisplayDestinationAmount(item)">{{ getDisplayDestinationAmount(item) }}</span>
                         <v-tooltip activator="parent" v-if="!item.hideAmount && ((item.type !== TransactionType.Transfer && item.sourceAccount?.currency !== defaultCurrency) || (item.type === TransactionType.Transfer && item.sourceAccount?.currency !== defaultCurrency && item.destinationAccount?.currency !== defaultCurrency))">
                             <span>{{ getDisplaySourceAmount(item, true) }}</span>
-                            <v-icon class="ms-1" size="13" :icon="mdiArrowRight" v-if="item.type === TransactionType.Transfer && item.sourceAccount?.id !== item.destinationAccount?.id && item.sourceAccount?.currency !== item.destinationAccount?.currency && item.sourceAmount !== item.destinationAmount"></v-icon>
+                            <v-icon class="icon-with-direction mx-1" size="13" :icon="mdiArrowRight" v-if="item.type === TransactionType.Transfer && item.sourceAccount?.id !== item.destinationAccount?.id && item.sourceAccount?.currency !== item.destinationAccount?.currency && item.sourceAmount !== item.destinationAmount"></v-icon>
                             <span v-if="item.type === TransactionType.Transfer && item.sourceAccount?.id !== item.destinationAccount?.id && item.sourceAccount?.currency !== item.destinationAccount?.currency && item.sourceAmount !== item.destinationAmount">{{ getDisplayDestinationAmount(item, true) }}</span>
                         </v-tooltip>
                     </template>
@@ -334,7 +335,7 @@ import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
 
 import type { NameNumeralValue } from '@/core/base.ts';
-import type { BigDecimal } from '@/core/numeral.ts';
+import { type BigDecimal, DecimalSeparator } from '@/core/numeral.ts';
 import { TimezoneTypeForStatistics } from '@/core/timezone.ts';
 import { TransactionType } from '@/core/transaction.ts';
 import { AccountBalanceTrendChartType, ChartDateAggregationType } from '@/core/statistics.ts';
@@ -349,6 +350,7 @@ import { BIG_DECIMAL_ZERO, parseBigDecimal } from '@/lib/numeral.ts';
 import { getCurrentUnixTime } from '@/lib/datetime.ts';
 import { getCategoryIconType } from '@/lib/icon.ts';
 import { startDownloadFile } from '@/lib/ui/common.ts';
+import { focusTableScrollContainer } from '@/lib/ui/desktop.ts';
 
 import {
     extendMdiSemicolon
@@ -381,11 +383,14 @@ type AmountInputDialogType = InstanceType<typeof AmountInputDialog>;
 type EditDialogType = InstanceType<typeof EditDialog>;
 
 const emit = defineEmits<{
+    (e: 'update:last-reconciled-time', newLastReconciledTime: number): void;
     (e: 'error', message: string): void;
 }>();
 
 const {
     tt,
+    formatRange,
+    getCurrentDecimalSeparator,
     formatNumberToLocalizedNumerals,
     getTablePageOptions
 } = useI18n();
@@ -442,6 +447,7 @@ const transactionsStore = useTransactionsStore();
 const chartTypeIconMap = {
     [AccountBalanceTrendChartType.Column.type]: mdiChartBar,
     [AccountBalanceTrendChartType.Area.type]: mdiChartAreasplineVariant,
+    [AccountBalanceTrendChartType.SmoothArea.type]: mdiChartAreasplineVariant,
     [AccountBalanceTrendChartType.Boxplot.type]: mdiChartWaterfall,
     [AccountBalanceTrendChartType.Candlestick.type]: mdiChartWaterfall,
 };
@@ -460,6 +466,8 @@ const timezoneTypeIconMap = {
     [TimezoneTypeForStatistics.TransactionTimezone.type]: mdiInvoiceTextClockOutline
 };
 
+let rejectFunc: ((reason?: unknown) => void) | null = null;
+
 const dialogLayout = useTemplateRef<OneColumnDialogLayoutType>('dialogLayout');
 const amountInputDialog = useTemplateRef<AmountInputDialogType>('amountInputDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
@@ -474,8 +482,7 @@ const showAccountBalanceTrendsCharts = ref<boolean>(false);
 const chartType = ref<number>(AccountBalanceTrendChartType.Default.type);
 const transactionListDialogHeight = ref<number>(0);
 
-let rejectFunc: ((reason?: unknown) => void) | null = null;
-
+const useCommaDecimalSeparator = computed<boolean>(() => getCurrentDecimalSeparator() === DecimalSeparator.Comma.symbol);
 const reconciliationStatementsTablePageOptions = computed<NameNumeralValue[]>(() => getTablePageOptions(DEFAULT_PAGE_COUNTS, reconciliationStatements.value?.transactions.length, true, false));
 const preserveDialogHeight = computed<boolean>(() => showAccountBalanceTrendsCharts.value && transactionListDialogHeight.value > 0);
 
@@ -702,11 +709,13 @@ function updateLastReconciledTime(): void {
         return;
     }
 
+    const reconciledTime: number = newLastReconciledTime.value;
     updatingLastReconciledTime.value = true;
 
-    accountsStore.updateAccountLastReconciledTime(accountId.value, newLastReconciledTime.value).then(() => {
+    accountsStore.updateAccountLastReconciledTime(accountId.value, reconciledTime).then(() => {
         updatingLastReconciledTime.value = false;
         snackbar.value?.showMessage('Last reconciled time have been updated');
+        emit('update:last-reconciled-time', reconciledTime);
     }).catch(error => {
         updatingLastReconciledTime.value = false;
 

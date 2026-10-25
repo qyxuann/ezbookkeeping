@@ -1,20 +1,21 @@
 <template>
     <f7-page>
         <f7-navbar>
-            <f7-nav-left>
-                <f7-link icon-f7="xmark" @click="cancel"></f7-link>
+            <f7-nav-left :class="{ 'disabled': loadingOverview }">
+                <f7-link icon-f7="xmark" :aria-label="tt('Cancel')" @click="cancel"></f7-link>
             </f7-nav-left>
             <f7-nav-title :title="tt('Home Page Layout')"></f7-nav-title>
-            <f7-nav-right class="navbar-compact-icons">
-                <f7-link icon-f7="ellipsis" @click="showMoreActionSheet = true"></f7-link>
-                <f7-link icon-f7="checkmark_alt" :class="{ disabled: !isModified }" @click="save"></f7-link>
+            <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loadingOverview }">
+                <f7-link icon-f7="ellipsis" :aria-label="tt('More')" @click="showMoreActionSheet = true"></f7-link>
+                <f7-link icon-f7="checkmark_alt" :class="{ disabled: !isModified }" :aria-label="tt('Save')" @click="save"></f7-link>
             </f7-nav-right>
         </f7-navbar>
 
-        <f7-list sortable sortable-enabled sortable-tap-hold class="overview-layout-editor no-margin"
+        <f7-list sortable sortable-enabled sortable-tap-hold class="overview-layout-editor no-margin margin-bottom"
+                 :class="{ 'disabled': loadingOverview }"
                  :sortable-move-elements="false" @sortable:sort="onSort" v-if="draftLayout.widgets.length">
-            <li class="cursor-pointer" :key="widget.id" v-for="widget in draftLayout.widgets">
-                <overview-widget class="overview-widget-editor-content" :widget="widget" :loading="loadingOverview" />
+            <li class="mobile-overview-dashboard-item cursor-pointer" :key="widget.id" v-for="widget in draftLayout.widgets">
+                <overview-widget editing class="overview-widget-editor-content" :widget="widget" :loading="loadingOverview" />
                 <div class="overview-widget-drag-area" @click="showWidgetActions(widget)"></div>
             </li>
         </f7-list>
@@ -28,6 +29,7 @@
             <f7-actions-group>
                 <f7-actions-label v-if="selectedWidget">{{ tt(getMobileWidgetName(selectedWidget.type)) }}</f7-actions-label>
                 <f7-actions-button @click="showConfigureWidgetPopup = true" v-if="selectedWidget && hasWidgetSettings(selectedWidget.type)">{{ tt('Settings') }}</f7-actions-button>
+                <f7-actions-button @click="duplicateSelectedWidget">{{ tt('Duplicate') }}</f7-actions-button>
                 <f7-actions-button color="red" @click="removeSelectedWidget">{{ tt('Delete') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
@@ -83,6 +85,8 @@
                         <f7-list-input
                             type="textarea"
                             class="import-chart-color-scheme-textarea code-textarea"
+                            autocomplete="off"
+                            :placeholder="layoutJsonPlaceholder"
                             :value="importText"
                             @input="importText = $event.target.value"
                         ></f7-list-input>
@@ -127,7 +131,7 @@ import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { useOverviewStore } from '@/stores/overview.ts';
 
-import { itemAndIndex } from '@/core/base.ts';
+import { type PartialRecord, itemAndIndex } from '@/core/base.ts';
 import {
     type OverviewWidgetType,
     type MobileOverviewLayout,
@@ -138,9 +142,11 @@ import {
 import { MOBILE_OVERVIEW_WIDGET_DEFINITIONS, DEFAULT_MOBILE_OVERVIEW_LAYOUT } from '@/consts/overview_layout.ts';
 
 import {
+    cloneWidget,
     getOverviewDataRequirements,
     getOverviewTransactionOverviewMonths,
-    getOverviewRecentTransactionCount,
+    getOverviewUnreconciledTransactionAccountIds,
+    getOverviewRecentTransactionsQueries,
     getOverviewAssetTrendMonths,
     getOverviewCalendarHeatmapMonths,
     getOverviewTransactionCategoryStatisticDateTypes,
@@ -166,6 +172,16 @@ const settingsStore = useSettingsStore();
 const accountsStore = useAccountsStore();
 const transactionCategoriesStore = useTransactionCategoriesStore();
 const overviewStore = useOverviewStore();
+
+const layoutJsonPlaceholder: string = `{
+    "widgets": [
+        {
+            "id": "widget-id",
+            "type": "widget-type",
+            "settings": {}
+        }
+    ]
+}`;
 
 const widgetSettingsPopup = useTemplateRef<WidgetSettingsPopupType>('widgetSettingsPopup');
 
@@ -210,20 +226,27 @@ function hasWidgetSettings(type: OverviewWidgetType): boolean {
 function reload(force: boolean): void {
     loadingOverview.value = true;
 
-    const requirements: OverviewWidgetDataRequirement[] = getOverviewDataRequirements(draftLayout.value, MOBILE_OVERVIEW_WIDGET_DEFINITIONS);
+    const requirements: PartialRecord<OverviewWidgetDataRequirement, boolean> = getOverviewDataRequirements(draftLayout.value, MOBILE_OVERVIEW_WIDGET_DEFINITIONS);
     const promises: Promise<unknown>[] = [
         accountsStore.loadAllAccounts({ force: false }),
         transactionCategoriesStore.loadAllCategories({ force: false })
     ];
 
-    if (requirements.includes(OverviewWidgetDataRequirement.TransactionOverview)) {
+    if (requirements[OverviewWidgetDataRequirement.TransactionOverview]) {
         promises.push(overviewStore.loadTransactionOverview({
             force: force,
             months: getOverviewTransactionOverviewMonths(draftLayout.value)
         }));
     }
 
-    if (requirements.includes(OverviewWidgetDataRequirement.TransactionCategoryStatistics)) {
+    if (requirements[OverviewWidgetDataRequirement.AccountUnreconciledTransactionCounts]) {
+        promises.push(overviewStore.loadTransactionUnreconciledCounts({
+            force: force,
+            accountIds: getOverviewUnreconciledTransactionAccountIds(draftLayout.value)
+        }));
+    }
+
+    if (requirements[OverviewWidgetDataRequirement.TransactionCategoryStatistics]) {
         for (const dateType of getOverviewTransactionCategoryStatisticDateTypes(draftLayout.value)) {
             promises.push(overviewStore.loadTransactionCategoryStatistics({
                 force: force,
@@ -232,21 +255,27 @@ function reload(force: boolean): void {
         }
     }
 
-    if (requirements.includes(OverviewWidgetDataRequirement.AssetTrends)) {
+    if (requirements[OverviewWidgetDataRequirement.AssetTrends]) {
         promises.push(overviewStore.loadTransactionAssetTrends({
             force: force,
             months: getOverviewAssetTrendMonths(draftLayout.value)
         }));
     }
 
-    if (requirements.includes(OverviewWidgetDataRequirement.RecentTransactions)) {
+    if (requirements[OverviewWidgetDataRequirement.RecentTransactions]) {
         promises.push(overviewStore.loadRecentTransactions({
             force: force,
-            count: getOverviewRecentTransactionCount(draftLayout.value)
+            queries: getOverviewRecentTransactionsQueries(draftLayout.value)
         }));
     }
 
-    if (requirements.includes(OverviewWidgetDataRequirement.DailyTransactionAmounts)) {
+    if (requirements[OverviewWidgetDataRequirement.CurrentMonthTransactions]) {
+        promises.push(overviewStore.loadCurrentMonthTransactions({
+            force: force
+        }));
+    }
+
+    if (requirements[OverviewWidgetDataRequirement.DailyTransactionAmounts]) {
         promises.push(overviewStore.loadTransactionDailyAmounts({
             force: force,
             months: getOverviewCalendarHeatmapMonths(draftLayout.value)
@@ -297,6 +326,25 @@ function removeWidget(id: string): void {
 function showWidgetActions(widget: MobileOverviewWidgetLayout): void {
     selectedWidget.value = widget;
     showWidgetActionSheet.value = true;
+}
+
+function duplicateSelectedWidget(): void {
+    const widget = selectedWidget.value;
+
+    if (!widget) {
+        return;
+    }
+
+    for (const [currentWidget, index] of itemAndIndex(draftLayout.value.widgets)) {
+        if (currentWidget.id === widget.id) {
+            draftLayout.value.widgets.splice(index + 1, 0, {
+                ...cloneWidget(widget),
+                id: generateRandomUUID()
+            });
+            reload(false);
+            break;
+        }
+    }
 }
 
 function removeSelectedWidget(): void {
@@ -388,6 +436,7 @@ reload(false);
     --f7-list-bg-color: transparent;
     --f7-sortable-sorting-item-bg-color: transparent;
     --f7-sortable-sorting-item-box-shadow: none;
+    --f7-sortable-handler-width: var(--f7-list-item-padding-horizontal);
 
     .overview-widget-drag-area {
         position: absolute;

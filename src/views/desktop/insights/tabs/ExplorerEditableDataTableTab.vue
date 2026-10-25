@@ -16,7 +16,7 @@
                     />
                     <v-select
                         class="flex-0-0"
-                        min-width="150"
+                        min-width="200"
                         item-title="name"
                         item-value="value"
                         density="compact"
@@ -127,10 +127,12 @@
                         v-model="selectedTransactions[item.id]"></v-checkbox>
         </template>
         <template #item.time="{ item }">
-            <span>{{ getDisplayDateTime(item) }}</span>
-            <v-chip class="ms-1" variant="flat" color="grey" size="x-small"
-                    v-if="!isSameAsDefaultTimezoneOffsetMinutes(item)">{{ getDisplayTimezone(item) }}</v-chip>
-            <v-tooltip activator="parent" v-if="!isSameAsDefaultTimezoneOffsetMinutes(item)">{{ getDisplayTimeInDefaultTimezone(item) }}</v-tooltip>
+            <div class="d-flex align-center">
+                <span>{{ getDisplayDateTime(item) }}</span>
+                <v-chip class="ms-1" variant="flat" color="grey" size="x-small"
+                        v-if="!isSameAsDefaultTimezoneOffsetMinutes(item)">{{ getDisplayTimezone(item) }}</v-chip>
+                <v-tooltip activator="parent" v-if="!isSameAsDefaultTimezoneOffsetMinutes(item)">{{ getDisplayTimeInDefaultTimezone(item) }}</v-tooltip>
+            </div>
         </template>
         <template #item.type="{ item }">
             <v-chip label variant="outlined" size="x-small"
@@ -144,10 +146,10 @@
                           :color="item.secondaryCategory?.color ?? ''"
                           v-if="item.secondaryCategory?.color"></ItemIcon>
                 <v-icon size="24" :icon="mdiPencilBoxOutline" v-else-if="!item.secondaryCategory || !item.secondaryCategory?.color" />
-                <span class="ms-2" v-if="item.type === TransactionType.ModifyBalance">
+                <span class="ms-1" v-if="item.type === TransactionType.ModifyBalance">
                     {{ tt('Modify Balance') }}
                 </span>
-                <span class="ms-2" v-else-if="item.type !== TransactionType.ModifyBalance && item.secondaryCategory">
+                <span class="ms-1" v-else-if="item.type !== TransactionType.ModifyBalance && item.secondaryCategory">
                     {{ item.secondaryCategory?.name }}
                 </span>
             </div>
@@ -158,7 +160,7 @@
             <span v-if="item.type === TransactionType.Transfer && item.sourceAccount?.id !== item.destinationAccount?.id && getDisplaySourceAmount(item) !== getDisplayDestinationAmount(item)">{{ getDisplayDestinationAmount(item) }}</span>
             <v-tooltip activator="parent" v-if="!item.hideAmount && ((item.type !== TransactionType.Transfer && item.sourceAccount?.currency !== defaultCurrency) || (item.type === TransactionType.Transfer && item.sourceAccount?.currency !== defaultCurrency && item.destinationAccount?.currency !== defaultCurrency))">
                 <span>{{ getDisplaySourceAmount(item, true) }}</span>
-                <v-icon class="ms-1" size="13" :icon="mdiArrowRight" v-if="item.type === TransactionType.Transfer && item.sourceAccount?.id !== item.destinationAccount?.id && item.sourceAccount?.currency !== item.destinationAccount?.currency && item.sourceAmount !== item.destinationAmount"></v-icon>
+                <v-icon class="icon-with-direction mx-1" size="13" :icon="mdiArrowRight" v-if="item.type === TransactionType.Transfer && item.sourceAccount?.id !== item.destinationAccount?.id && item.sourceAccount?.currency !== item.destinationAccount?.currency && item.sourceAmount !== item.destinationAmount"></v-icon>
                 <span v-if="item.type === TransactionType.Transfer && item.sourceAccount?.id !== item.destinationAccount?.id && item.sourceAccount?.currency !== item.destinationAccount?.currency && item.sourceAmount !== item.destinationAmount">{{ getDisplayDestinationAmount(item, true) }}</span>
             </v-tooltip>
         </template>

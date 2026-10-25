@@ -3,6 +3,7 @@ import type { GenericNameValue } from './base.ts';
 export enum OverviewWidgetType {
     AssetSummary = 'asset-summary',
     AccountBalanceList = 'account-balance-list',
+    AccountUnreconciledTransactions = 'account-unreconciled-transactions',
     CurrentMonthOverview = 'current-month-overview',
     CurrentMonthExpenseProgress = 'current-month-expense-progress',
     PeriodIncomeExpense = 'period-income-expense',
@@ -11,27 +12,38 @@ export enum OverviewWidgetType {
     NetAssetsTrend = 'net-assets-trend',
     ExpenseCategoryRanking = 'expense-category-ranking',
     RecentTransactions = 'recent-transactions',
-    TransactionCalendarHeatmap = 'transaction-calendar-heatmap'
+    TransactionCalendar = 'transaction-calendar',
+    TransactionCalendarHeatmap = 'transaction-calendar-heatmap',
+    AddTransactionButton = 'add-transaction-button'
 }
 
 export enum OverviewWidgetDataRequirement {
     Accounts = 'accounts',
     TransactionCategories = 'transactionCategories',
     TransactionOverview = 'transactionOverview',
+    AccountUnreconciledTransactionCounts = 'accountUnreconciledTransactionCounts',
     TransactionOverviewLast2Months = 'transactionOverviewLast2Months',
     TransactionOverviewLast12Months = 'transactionOverviewLast12Months',
     TransactionCategoryStatistics = 'transactionCategoryStatistics',
     AssetTrends = 'assetTrends',
     RecentTransactions = 'recentTransactions',
+    CurrentMonthTransactions = 'currentMonthTransactions',
     DailyTransactionAmounts = 'dailyTransactionAmounts'
 }
 
 export type OverviewWidgetSettingValue = string | number | boolean | (string | number)[];
 
+export interface OverviewWidgetCustomSelectSettingValue extends GenericNameValue<string | number> {
+    name: string;
+    value: string | number;
+    disabled?: (settings: Record<string, OverviewWidgetSettingValue> | undefined, context: OverviewWidgetSettingContext) => boolean;
+}
+
 interface OverviewWidgetSettingItemBase {
-    settingType: 'itemCountSelect' | 'monthSelect' | 'customSelect' | 'switch' | 'color' | 'textbox';
+    settingType: 'itemCountSelect' | 'monthSelect' | 'accountSelect' | 'categorySelect' | 'tagSelect' | 'customSelect' | 'switch' | 'color' | 'amount' | 'amountFilter' | 'textbox';
     settingName: string;
     displayName: string;
+    condition?: (settings?: Record<string, OverviewWidgetSettingValue>) => boolean;
 }
 
 export interface OverviewWidgetItemCountSelectSettingItem extends OverviewWidgetSettingItemBase {
@@ -44,12 +56,25 @@ export interface OverviewWidgetMonthSelectSettingItem extends OverviewWidgetSett
     monthValues: number[];
 }
 
+export interface OverviewWidgetAccountSelectSettingItem extends OverviewWidgetSettingItemBase {
+    settingType: 'accountSelect';
+    disableHiddenAccounts?: boolean;
+}
+
+export interface OverviewWidgetCategorySelectSettingItem extends OverviewWidgetSettingItemBase {
+    settingType: 'categorySelect';
+}
+
+export interface OverviewWidgetTagSelectSettingItem extends OverviewWidgetSettingItemBase {
+    settingType: 'tagSelect';
+}
+
 export interface OverviewWidgetCustomSelectSettingItem extends OverviewWidgetSettingItemBase {
     settingType: 'customSelect';
-    selectValues: GenericNameValue<string | number>[];
+    selectValues: OverviewWidgetCustomSelectSettingValue[];
     multiple?: boolean;
+    minSelections?: number;
     allValue?: string | number;
-    selectValueSource?: 'accountCategories';
 }
 
 export interface OverviewWidgetSwitchSettingItem extends OverviewWidgetSettingItemBase {
@@ -60,6 +85,14 @@ export interface OverviewWidgetColorSettingItem extends OverviewWidgetSettingIte
     settingType: 'color';
 }
 
+export interface OverviewWidgetAmountSettingItem extends OverviewWidgetSettingItemBase {
+    settingType: 'amount';
+}
+
+export interface OverviewWidgetAmountFilterSettingItem extends OverviewWidgetSettingItemBase {
+    settingType: 'amountFilter';
+}
+
 export interface OverviewWidgetTextboxSettingItem extends OverviewWidgetSettingItemBase {
     settingType: 'textbox';
     placeholder?: string;
@@ -67,10 +100,29 @@ export interface OverviewWidgetTextboxSettingItem extends OverviewWidgetSettingI
 
 export type OverviewWidgetSettingItem = OverviewWidgetItemCountSelectSettingItem |
     OverviewWidgetMonthSelectSettingItem |
+    OverviewWidgetAccountSelectSettingItem |
+    OverviewWidgetCategorySelectSettingItem |
+    OverviewWidgetTagSelectSettingItem |
     OverviewWidgetCustomSelectSettingItem |
     OverviewWidgetSwitchSettingItem |
     OverviewWidgetColorSettingItem |
+    OverviewWidgetAmountSettingItem |
+    OverviewWidgetAmountFilterSettingItem |
     OverviewWidgetTextboxSettingItem;
+
+export interface OverviewWidgetSettingContext {
+    aiTextRecognitionEnabled: boolean;
+    aiImageRecognitionEnabled: boolean;
+}
+
+export interface OverviewRecentTransactionsQuery {
+    count: number;
+    accountIds: string[];
+    categoryIds: string[];
+    tagFilter: string;
+    amountFilter: string;
+    keyword: string;
+}
 
 export interface OverviewWidgetDefinitionBase {
     type: OverviewWidgetType;
@@ -134,4 +186,16 @@ export interface MobileOverviewWidgetLayout extends OverviewWidgetLayoutBase {
     id: string;
     type: OverviewWidgetType;
     settings: Record<string, OverviewWidgetSettingValue>;
+}
+
+export enum MobileOverviewWidgetNavigationType {
+    Url = 'url',
+    AIClipboardTextRecognition = 'ai-clipboard-text-recognition',
+    AIImageRecognition = 'ai-image-recognition'
+}
+
+export enum AddTransactionButtonDefaultAction {
+    AddTransaction = 'add-transaction',
+    AIClipboardTextRecognition = 'ai-clipboard-text-recognition',
+    AIImageRecognition = 'ai-image-recognition'
 }

@@ -13,12 +13,12 @@ import {
 import {
     getOverviewDataRequirements,
     getOverviewTransactionOverviewMonths,
-    getOverviewRecentTransactionCount,
     getOverviewAssetTrendMonths,
     getOverviewCalendarHeatmapMonths,
     getOverviewTransactionCategoryStatisticDateTypes,
     resolveDesktopOverviewWidgetCollisions,
     findDesktopOverviewWidgetPosition,
+    findDesktopOverviewWidgetDuplicatePosition,
     normalizeDesktopOverviewLayout,
     compactDesktopOverviewWidgets,
     isDefaultDesktopOverviewLayout,
@@ -35,9 +35,9 @@ describe('desktop overview layout', () => {
         const requirements = getOverviewDataRequirements(normalizeDesktopOverviewLayout({
             widgets: [{ id: 'trend', type: OverviewWidgetType.IncomeExpenseTrend, x: 0, y: 0, w: 6, h: 6 }]
         }), DESKTOP_OVERVIEW_WIDGET_DEFINITIONS);
-        expect(requirements.includes(OverviewWidgetDataRequirement.TransactionOverview)).toBe(true);
-        expect(requirements.includes(OverviewWidgetDataRequirement.TransactionOverviewLast12Months)).toBe(true);
-        expect(requirements.includes(OverviewWidgetDataRequirement.Accounts)).toBe(false);
+        expect(!!requirements[OverviewWidgetDataRequirement.TransactionOverview]).toBe(true);
+        expect(!!requirements[OverviewWidgetDataRequirement.TransactionOverviewLast12Months]).toBe(true);
+        expect(!!requirements[OverviewWidgetDataRequirement.Accounts]).toBe(false);
     });
 
     test('gets the maximum transaction overview months required by widgets', () => {
@@ -66,7 +66,6 @@ describe('desktop overview layout', () => {
         });
 
         expect(getOverviewTransactionOverviewMonths(layout)).toBe(2);
-        expect(getOverviewRecentTransactionCount(layout)).toBe(10);
         expect(getOverviewAssetTrendMonths(layout)).toBe(12);
         expect(getOverviewCalendarHeatmapMonths(layout)).toBe(6);
     });
@@ -133,7 +132,7 @@ describe('desktop overview layout', () => {
             widgets: [
                 { id: 'one', type: OverviewWidgetType.PeriodIncomeExpense, x: -2, y: -1, w: 1, h: 1, settings: { dateRange: 'invalid' } },
                 { id: 'ranking', type: OverviewWidgetType.ExpenseCategoryRanking, x: 0, y: 0, w: 4, h: 6, settings: { dateRange: 'invalid', categoryLevel: 'invalid', itemCount: 100 } },
-                { id: 'accounts', type: OverviewWidgetType.AccountBalanceList, x: 4, y: 0, w: 4, h: 6, settings: { accountCategories: [1, 2, 3, 999, 2], itemCount: 10, sortBy: 'balance' } },
+                { id: 'accounts', type: OverviewWidgetType.AccountBalanceList, x: 4, y: 0, w: 4, h: 6, settings: { accountIds: ['1', '2', 3, '2'], accountCategories: [1, 2, 3], itemCount: 10, sortBy: 'balance' } },
                 { id: 'income-trend', type: OverviewWidgetType.IncomeExpenseTrend, x: 0, y: 0, w: 6, h: 6, settings: { months: 6, showXAxisLabels: false, showLegend: false } },
                 { id: 'assets-trend', type: OverviewWidgetType.NetAssetsTrend, x: 6, y: 0, w: 6, h: 6, settings: { months: 12, showXAxisLabels: false, showLegend: false } },
                 { id: 'default-trend', type: OverviewWidgetType.NetAssetsTrend, x: 0, y: 6, w: 6, h: 6, settings: { months: 12 } }
@@ -144,7 +143,8 @@ describe('desktop overview layout', () => {
         expect(layout.widgets[0]).toMatchObject({ id: 'income-trend', type: OverviewWidgetType.IncomeExpenseTrend, x: 0, y: 0, w: 6, h: 6, settings: { months: 6, showXAxisLabels: false, showLegend: false } });
         expect(layout.widgets[1]).toMatchObject({ id: 'assets-trend', type: OverviewWidgetType.NetAssetsTrend, x: 6, y: 0, w: 6, h: 6, settings: { months: 12, showXAxisLabels: false, showLegend: false } });
         expect(layout.widgets[2]).toMatchObject({ id: 'one', type: OverviewWidgetType.PeriodIncomeExpense, x: 0, y: 6, w: 2, h: 3, settings: { dateRange: DateRange.Today.type } });
-        expect(layout.widgets[3]).toMatchObject({ id: 'accounts', type: OverviewWidgetType.AccountBalanceList, x: 4, y: 6, w: 4, h: 6, settings: { accountCategories: [1, 2, 3], itemCount: 10, sortBy: 'balance' } });
+        expect(layout.widgets[3]).toMatchObject({ id: 'accounts', type: OverviewWidgetType.AccountBalanceList, x: 4, y: 6, w: 4, h: 6, settings: { accountIds: ['1', '2', '2'], itemCount: 10, sortBy: 'balance' } });
+        expect(layout.widgets[3]?.settings).not.toHaveProperty('accountCategories');
         expect(layout.widgets[4]).toMatchObject({ id: 'ranking', type: OverviewWidgetType.ExpenseCategoryRanking, x: 0, y: 9, w: 4, h: 6, settings: { dateRange: DateRange.ThisMonth.type, categoryLevel: 'primary', itemCount: 3 } });
         expect(layout.widgets[5]).toMatchObject({ id: 'default-trend', type: OverviewWidgetType.NetAssetsTrend, x: 0, y: 15, w: 6, h: 6, settings: { months: 12, showXAxisLabels: true, showLegend: true } });
     });
@@ -167,6 +167,18 @@ describe('desktop overview layout', () => {
             { id: 'one', type: OverviewWidgetType.AssetSummary, x: 0, y: 0, w: 12, h: 3, settings: {} }
         ], 4, 3);
         expect(position).toEqual({ x: 0, y: 3 });
+    });
+
+    test('places a duplicated widget on the right when possible, otherwise below', () => {
+        const source = { id: 'source', type: OverviewWidgetType.AssetSummary, x: 0, y: 0, w: 4, h: 3, settings: {} };
+
+        expect(findDesktopOverviewWidgetDuplicatePosition([source], source)).toEqual({ x: 4, y: 0 });
+
+        const rightWidget = { id: 'right', type: OverviewWidgetType.AssetSummary, x: 4, y: 0, w: 4, h: 3, settings: {} };
+        expect(findDesktopOverviewWidgetDuplicatePosition([source, rightWidget], source)).toEqual({ x: 0, y: 3 });
+
+        const rightEdgeWidget = { ...source, x: 8 };
+        expect(findDesktopOverviewWidgetDuplicatePosition([rightEdgeWidget], rightEdgeWidget)).toEqual({ x: 8, y: 3 });
     });
 
     test('round trips serialized layout', () => {
@@ -202,17 +214,17 @@ describe('mobile overview layout', () => {
             {
                 id: 'asset-summary',
                 type: OverviewWidgetType.AssetSummary,
-                settings: { height: 3, lightBackgroundColor: 'ffcc00', darkBackgroundColor: 'c67e48' }
+                settings: { height: 3, lightBackgroundColor: 'edddcd', darkBackgroundColor: '7f5e4b' }
             },
             {
                 id: 'accounts',
                 type: OverviewWidgetType.AccountBalanceList,
-                settings: { accountCategories: [0], itemCount: 4, sortBy: 'displayOrder' }
+                settings: { accountIds: [], itemCount: 4, showTitle: false, sortBy: 'displayOrder', alwaysShowAmount: false, showAvailableCreditForCreditCard: false }
             },
             {
                 id: 'month',
                 type: OverviewWidgetType.CurrentMonthOverview,
-                settings: { height: 3, lightBackgroundColor: 'ffcc00', darkBackgroundColor: 'c67e48' }
+                settings: { height: 3, lightBackgroundColor: 'edddcd', darkBackgroundColor: '7f5e4b' }
             }
         ]);
     });
@@ -228,7 +240,7 @@ describe('mobile overview layout', () => {
         });
 
         expect(layout.widgets[0]?.settings).toEqual({ height: 1, lightBackgroundColor: '112233', darkBackgroundColor: 'abcdef' });
-        expect(layout.widgets[1]?.settings).toEqual({ height: 3, lightBackgroundColor: 'ffcc00', darkBackgroundColor: 'c67e48' });
+        expect(layout.widgets[1]?.settings).toEqual({ height: 3, lightBackgroundColor: 'edddcd', darkBackgroundColor: '7f5e4b' });
         expect(layout.widgets[2]?.settings).toEqual({ dateRanges: [DateRange.ThisYear.type, DateRange.Today.type] });
         expect(layout.widgets[3]?.settings).toEqual({ dateRanges: [DateRange.Today.type, DateRange.ThisWeek.type, DateRange.ThisMonth.type, DateRange.ThisYear.type] });
     });
@@ -238,7 +250,7 @@ describe('mobile overview layout', () => {
         const layout = parseMobileOverviewLayout(json);
 
         expect(serializeMobileOverviewLayout(layout)).toBe(serializeMobileOverviewLayout(DEFAULT_MOBILE_OVERVIEW_LAYOUT));
-        expect(getOverviewDataRequirements(layout, MOBILE_OVERVIEW_WIDGET_DEFINITIONS)).toEqual([OverviewWidgetDataRequirement.TransactionOverview]);
+        expect(getOverviewDataRequirements(layout, MOBILE_OVERVIEW_WIDGET_DEFINITIONS)).toEqual({[OverviewWidgetDataRequirement.TransactionOverview]: true});
     });
 
     test('empty setting uses a cloned default layout', () => {

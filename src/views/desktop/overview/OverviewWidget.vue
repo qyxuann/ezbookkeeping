@@ -3,13 +3,22 @@
                           v-if="widget.type === OverviewWidgetType.AssetSummary" />
 
     <account-balance-list-widget :loading="loading" :editing="editing" :title="widgetTitle"
-                                 :account-categories="widget.settings['accountCategories'] as number[]"
+                                 :account-ids="widget.settings['accountIds'] as string[]"
                                  :item-count="widget.settings['itemCount'] as number"
                                  :sort-by="widget.settings['sortBy'] as string"
+                                 :always-show-amount="widget.settings['alwaysShowAmount'] as boolean"
+                                 :show-available-credit-for-credit-card="widget.settings['showAvailableCreditForCreditCard'] as boolean"
                                  v-else-if="widget.type === OverviewWidgetType.AccountBalanceList" />
 
+    <account-unreconciled-transactions-widget :loading="loading" :editing="editing" :title="widgetTitle"
+                                              :account-ids="widget.settings['accountIds'] as string[]"
+                                              :item-count="widget.settings['itemCount'] as number"
+                                              :sort-by="widget.settings['sortBy'] as string"
+                                              @refresh="emit('refresh', false)"
+                                              v-else-if="widget.type === OverviewWidgetType.AccountUnreconciledTransactions" />
+
     <monthly-expense-overview-widget :loading="loading"
-                                     @refresh="$emit('refresh')"
+                                     @refresh="emit('refresh', true)"
                                      v-else-if="widget.type === OverviewWidgetType.CurrentMonthOverview" />
 
     <monthly-expense-progress-widget :loading="loading" :title="widgetTitle"
@@ -24,12 +33,16 @@
                                                v-else-if="widget.type === OverviewWidgetType.PeriodNetIncomeAndSavingsRate" />
 
     <income-expense-trend-widget :loading="loading" :title="widgetTitle"
+                                 :chart-type="widget.settings['chartType'] as number"
+                                 :transaction-types="widget.settings['transactionTypes'] as number[]"
                                  :months="widget.settings['months'] as number"
+                                 :smooth-curve="widget.settings['smoothCurve'] as boolean"
                                  :show-x-axis-labels="widget.settings['showXAxisLabels'] as boolean"
                                  :show-legend="widget.settings['showLegend'] as boolean"
                                  v-else-if="widget.type === OverviewWidgetType.IncomeExpenseTrend" />
 
     <net-assets-trend-widget :loading="loading" :title="widgetTitle" :months="widget.settings['months'] as number"
+                             :smooth-curve="widget.settings['smoothCurve'] as boolean"
                              :show-x-axis-labels="widget.settings['showXAxisLabels'] as boolean"
                              :show-legend="widget.settings['showLegend'] as boolean"
                              v-else-if="widget.type === OverviewWidgetType.NetAssetsTrend" />
@@ -42,12 +55,27 @@
 
     <recent-transactions-widget :loading="loading" :editing="editing" :title="widgetTitle"
                                 :item-count="widget.settings['itemCount'] as number"
-                                @refresh="$emit('refresh')"
+                                :account-ids="widget.settings['accountIds'] as string[]"
+                                :category-ids="widget.settings['categoryIds'] as string[]"
+                                :tag-filter="widget.settings['tagFilter'] as string"
+                                :amount-filter="widget.settings['amountFilter'] as string"
+                                :keyword="widget.settings['keyword'] as string"
+                                @refresh="emit('refresh', false)"
                                 v-else-if="widget.type === OverviewWidgetType.RecentTransactions" />
+
+    <transaction-calendar-widget :loading="loading" :editing="editing" :title="widgetTitle"
+                                 :total-amount-type="widget.settings['totalAmountType'] as number"
+                                 :transaction-types="widget.settings['transactionTypes'] as number[]"
+                                 :show-alternate-date="widget.settings['showAlternateDate'] as boolean"
+                                 :show-amount="widget.settings['showAmount'] as boolean"
+                                 v-else-if="widget.type === OverviewWidgetType.TransactionCalendar" />
 
     <transaction-calendar-heatmap-widget :loading="loading" :editing="editing" :title="widgetTitle"
                                          :transaction-type="widget.settings['transactionType'] as TransactionType"
                                          :months="widget.settings['months'] as number"
+                                         :outlier-color-mode="widget.settings['outlierColorMode'] as TransactionCalendarHeatmapOutlierColorMode"
+                                         :outlier-top-count="widget.settings['outlierTopCount'] as number"
+                                         :outlier-amount-threshold="widget.settings['outlierAmountThreshold'] as number"
                                          v-else-if="widget.type === OverviewWidgetType.TransactionCalendarHeatmap" />
 </template>
 
@@ -62,11 +90,14 @@ import PeriodNetIncomeAndSavingsRateWidget from './widgets/PeriodNetIncomeAndSav
 import IncomeExpenseTrendWidget from './widgets/IncomeExpenseTrendWidget.vue';
 import NetAssetsTrendWidget from './widgets/NetAssetsTrendWidget.vue';
 import AccountBalanceListWidget from './widgets/AccountBalanceListWidget.vue';
+import AccountUnreconciledTransactionsWidget from './widgets/AccountUnreconciledTransactionsWidget.vue';
 import ExpenseCategoryRankingWidget from './widgets/ExpenseCategoryRankingWidget.vue';
 import RecentTransactionsWidget from './widgets/RecentTransactionsWidget.vue';
+import TransactionCalendarWidget from './widgets/TransactionCalendarWidget.vue';
 import TransactionCalendarHeatmapWidget from './widgets/TransactionCalendarHeatmapWidget.vue';
 
 import { TransactionType } from '@/core/transaction.ts';
+import { TransactionCalendarHeatmapOutlierColorMode } from '@/core/chart.ts';
 import {
     type DesktopOverviewWidgetLayout,
     OverviewWidgetType
@@ -78,12 +109,12 @@ const props = defineProps<{
     editing?: boolean
 }>();
 
+const emit = defineEmits<{
+    (e: 'refresh', force: boolean): void
+}>();
+
 const widgetTitle = computed<string>(() => {
     const title = props.widget.settings['title'];
     return typeof title === 'string' ? title.trim() : '';
 });
-
-defineEmits<{
-    (e: 'refresh'): void
-}>();
 </script>

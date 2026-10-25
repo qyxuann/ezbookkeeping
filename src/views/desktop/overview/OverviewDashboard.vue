@@ -5,34 +5,36 @@
         <div class="overview-dashboard-drop-placeholder" :style="getGridPositionStyle(draggingWidget)"
              v-if="draggingWidget"></div>
         <div class="overview-dashboard-item"
-             :class="{ 'overview-dashboard-item-editing': editing, 'overview-dashboard-item-dragging': draggingWidget?.id === widget.id }"
+             :class="{ 'overview-dashboard-item-editing': editing, 'overview-dashboard-item-dragging': draggingWidget?.id === widget.id, 'overview-dashboard-item-fixed-height': isFixedHeightWidget(widget) }"
              :style="getWidgetStyle(widget)" :key="widget.id" v-for="widget in sortedWidgets">
             <overview-widget class="overview-dashboard-widget" :widget="widget" :loading="loading" :editing="editing"
-                             @refresh="$emit('refresh')" />
+                             @refresh="refresh" />
             <template v-if="editing">
                 <div class="overview-dashboard-title-drag-area" :aria-label="tt('Move')"
                      @pointerdown="startPointerAction($event, widget, 'move')"></div>
                 <div class="overview-dashboard-editor-toolbar">
-                    <v-btn density="comfortable" color="default" variant="text" class="ma-2" :icon="true"
-                           :aria-label="tt('More')">
+                    <v-btn density="comfortable" color="default" variant="text" class="ma-1"
+                           :aria-label="tt('More')" :disabled="loading" :icon="true">
                         <v-icon :icon="mdiDotsVertical" />
                         <v-tooltip activator="parent">{{ tt('More') }}</v-tooltip>
                         <v-menu activator="parent">
                             <v-list>
                                 <template v-if="DESKTOP_OVERVIEW_WIDGET_DEFINITIONS[widget.type]?.supportsSettings?.length">
                                     <v-list-item :prepend-icon="mdiCogOutline" :title="tt('Settings')"
-                                                 @click="$emit('configure', widget)" />
+                                                 @click="emit('configure', widget)" />
                                     <v-divider class="my-2" />
                                 </template>
+                                <v-list-item :prepend-icon="mdiContentDuplicate" :title="tt('Duplicate')"
+                                             @click="emit('duplicate', widget)" />
                                 <v-list-item :prepend-icon="mdiDeleteOutline" :title="tt('Delete')"
-                                             @click="$emit('remove', widget.id)" />
+                                             @click="emit('remove', widget.id)" />
                             </v-list>
                         </v-menu>
                     </v-btn>
                 </div>
                 <button class="overview-dashboard-resize-handle" :aria-label="tt('Resize')"
                         @pointerdown="startPointerAction($event, widget, 'resize')">
-                    <v-icon :icon="mdiResizeBottomRight" size="32" />
+                    <v-icon class="icon-with-direction" :icon="mdiResizeBottomRight" size="32" />
                 </button>
             </template>
         </div>
@@ -40,7 +42,7 @@
         <div class="d-flex flex-column align-center justify-center ga-3" v-if="!layout.widgets.length">
             <v-icon :icon="mdiWidgetsOutline" size="64" color="secondary" />
             <span class="text-title-medium">{{ tt('No widgets') }}</span>
-            <v-btn color="primary" variant="tonal" @click="$emit('add')" v-if="editing">{{ tt('Add Widget') }}</v-btn>
+            <v-btn color="primary" variant="tonal" @click="emit('add')" v-if="editing">{{ tt('Add Widget') }}</v-btn>
         </div>
     </div>
 </template>
@@ -54,7 +56,8 @@ import { useI18n } from '@/locales/helpers.ts';
 
 import {
     type DesktopOverviewLayout,
-    type DesktopOverviewWidgetLayout
+    type DesktopOverviewWidgetLayout,
+    OverviewWidgetType
 } from '@/core/overview_layout.ts';
 import {
     DESKTOP_OVERVIEW_LAYOUT_COLUMNS,
@@ -68,6 +71,7 @@ import {
 
 import {
     mdiCogOutline,
+    mdiContentDuplicate,
     mdiDeleteOutline,
     mdiDotsVertical,
     mdiResizeBottomRight,
@@ -104,10 +108,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (e: 'update:layout', value: DesktopOverviewLayout): void;
-    (e: 'configure', value: DesktopOverviewWidgetLayout): void;
     (e: 'add'): void;
+    (e: 'configure', value: DesktopOverviewWidgetLayout): void;
+    (e: 'duplicate', value: DesktopOverviewWidgetLayout): void;
     (e: 'remove', value: string): void;
-    (e: 'refresh'): void;
+    (e: 'refresh', force: boolean): void;
 }>();
 
 const { tt } = useI18n();
@@ -128,6 +133,13 @@ const gridStyle = computed<Record<string, string>>(() => ({
     '--overview-dashboard-gap': `${GAP}px`,
     minHeight: props.layout.widgets.length ? `${rowCount.value * ROW_HEIGHT + (rowCount.value - 1) * GAP}px` : '360px'
 }));
+
+function isFixedHeightWidget(widget: DesktopOverviewWidgetLayout): boolean {
+    return widget.type === OverviewWidgetType.IncomeExpenseTrend ||
+        widget.type === OverviewWidgetType.NetAssetsTrend ||
+        widget.type === OverviewWidgetType.TransactionCalendar ||
+        widget.type === OverviewWidgetType.TransactionCalendarHeatmap;
+}
 
 function getGridPositionStyle(widget: DesktopOverviewWidgetLayout): Record<string, string> {
     return {
@@ -150,11 +162,15 @@ function getWidgetStyle(widget: DesktopOverviewWidgetLayout): Record<string, str
         style['height'] = `${preview.height}px`;
     }
 
+    if (props.loading) {
+        style['pointerEvents'] = 'none';
+    }
+
     return style;
 }
 
 function startPointerAction(event: PointerEvent, widget: DesktopOverviewWidgetLayout, action: 'move' | 'resize'): void {
-    if (!props.editing || !grid.value) {
+    if (props.loading || !props.editing || !grid.value) {
         return;
     }
 
@@ -256,6 +272,10 @@ function finishPointerAction(event: PointerEvent): void {
     window.removeEventListener('pointercancel', finishPointerAction);
 
     emit('update:layout', { ...props.layout, widgets: compactDesktopOverviewWidgets(props.layout.widgets) });
+}
+
+function refresh(force: boolean): void {
+    emit('refresh', force);
 }
 
 onBeforeUnmount(() => {

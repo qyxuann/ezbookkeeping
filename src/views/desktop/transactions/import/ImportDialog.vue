@@ -2,7 +2,7 @@
     <v-dialog :persistent="!!persistent || loading || submitting" v-model="showState">
         <one-column-dialog-layout :class="{ 'import-transaction-dialog-layout': currentStep === 'defineColumn' || currentStep === 'checkData' }"
                                   :content-class="currentStep === 'defineColumn' || currentStep === 'checkData' ? 'pa-0 import-transaction-dialog-content' : 'pa-0'"
-                                  :title="tt('Import Transactions')" :cancel-button-title="tt('Cancel')"
+                                  :title="tt('Import Transactions')" :cancel-button-title="currentStep === 'finalResult' ? tt('Close') : tt('Cancel')"
                                   :disabled="loading || submitting"
                                   :loading="currentStep !== 'checkData' && loading"
                                   @cancel="close(currentStep === 'finalResult')">
@@ -16,8 +16,8 @@
                     </a>
                 </div>
 
-                <v-btn density="compact" color="default" variant="text"
-                       class="ms-2" :icon="true" :disabled="loading"
+                <v-btn density="compact" color="default" variant="text" class="ms-2"
+                       :aria-label="tt('Refresh Accounts, Categories and Tags')" :icon="true" :disabled="loading"
                        :loading="loading"
                        @click="reloadBasisData"
                        v-if="currentStep === 'checkData'">
@@ -26,6 +26,13 @@
                     </template>
                     <v-icon :icon="mdiRefresh" size="22" />
                     <v-tooltip activator="parent">{{ tt('Refresh Accounts, Categories and Tags') }}</v-tooltip>
+                </v-btn>
+
+                <v-btn class="ms-2" density="comfortable" color="primary" variant="outlined"
+                       :disabled="loading || submitting || importTransactionCheckDataTab?.isEditing"
+                       @click="batchApplyRules"
+                       v-if="currentStep === 'checkData'">
+                    {{ tt('Batch Apply Rules') }}
                 </v-btn>
             </template>
 
@@ -51,7 +58,7 @@
                     <v-progress-circular indeterminate size="22" class="ms-2" v-if="submitting"></v-progress-circular>
                 </v-btn>
                 <v-btn density="compact" color="default" variant="text" class="ms-2"
-                       :icon="true" :disabled="loading || submitting"
+                       :aria-label="tt('More')" :disabled="loading || submitting" :icon="true"
                        v-if="currentStep === 'defineColumn' && importTransactionDefineColumnTab?.menus">
                     <v-icon :icon="mdiDotsVertical" />
                     <v-menu activator="parent" max-height="500">
@@ -66,7 +73,7 @@
                     </v-menu>
                 </v-btn>
                 <v-btn density="compact" color="default" variant="text" class="ms-2"
-                       :icon="true" :disabled="loading || submitting"
+                       :aria-label="tt('More')" :disabled="loading || submitting" :icon="true"
                        v-if="currentStep === 'executeCustomScript' && importTransactionExecuteCustomScriptTab?.menus">
                     <v-icon :icon="mdiDotsVertical" />
                     <v-menu activator="parent" max-height="500">
@@ -81,7 +88,7 @@
                     </v-menu>
                 </v-btn>
                 <v-btn density="compact" color="default" variant="text" class="ms-2"
-                       :icon="true" :disabled="loading || submitting"
+                       :aria-label="tt('Filter')" :icon="true" :disabled="loading || submitting || importTransactionCheckDataTab?.isEditing"
                        v-if="currentStep === 'checkData' && importTransactionCheckDataTab?.filterMenus">
                     <v-icon :icon="mdiFilterOutline" />
                     <v-menu activator="parent" max-height="500">
@@ -102,7 +109,7 @@
                     </v-menu>
                 </v-btn>
                 <v-btn density="compact" color="default" variant="text" class="ms-2"
-                       :icon="true" :disabled="loading || submitting"
+                       :aria-label="tt('More')" :icon="true" :disabled="loading || submitting"
                        v-if="currentStep === 'checkData' && importTransactionCheckDataTab?.toolMenus">
                     <v-icon :icon="mdiDotsVertical" />
                     <v-menu activator="parent" max-height="500">
@@ -208,9 +215,11 @@
                                         </template>
 
                                         <template #no-data>
-                                            <v-list class="py-0">
+                                            <v-list class="py-0" select-strategy="classic"
+                                                    :selected="objectFieldWithValueToArrayItem(importAdditionalOptions, true as (boolean | undefined))"
+                                                    @keydown.up.stop @keydown.down.stop>
                                                 <template v-for="item in allSupportedAdditionalOptions">
-                                                    <v-list-item :key="item.key"
+                                                    <v-list-item class="text-body-medium" :key="item.key" :value="item.key"
                                                                  :append-icon="importAdditionalOptions[item.key] ? mdiCheck : undefined"
                                                                  @click="importAdditionalOptions[item.key] = !importAdditionalOptions[item.key]"
                                                                  v-if="isDefined(supportedAdditionalOptions[item.key])">{{ tt(item.name) }}</v-list-item>
@@ -223,6 +232,7 @@
                                 <v-col cols="12" md="12" v-if="supportedAIAdditionalPrompt">
                                     <v-textarea
                                         type="text"
+                                        autocomplete="off"
                                         persistent-placeholder
                                         rows="2"
                                         :disabled="submitting"
@@ -248,6 +258,7 @@
                                 <v-col cols="12" md="12" v-if="isImportDataFromTextbox">
                                     <v-textarea
                                         type="text"
+                                        autocomplete="off"
                                         persistent-placeholder
                                         rows="5"
                                         :disabled="submitting"
@@ -265,7 +276,7 @@
                                                       color="rgba(0,0,0,0)" @click="removeImportImageFile(picIdx)">
                                                 <v-img :src="imageItem.previewUrl"></v-img>
                                                 <div class="picture-control-icon">
-                                                    <v-icon size="48" :icon="mdiTrashCanOutline" />
+                                                    <v-icon size="48" :aria-label="tt('Remove Picture')" :icon="mdiTrashCanOutline" />
                                                 </div>
                                             </v-avatar>
                                         </div>
@@ -275,7 +286,7 @@
                                                       :class="{ 'enabled': !submitting, 'cursor-pointer': !submitting }"
                                                       color="rgba(0,0,0,0)" @click="showOpenFileDialog">
                                                 <v-tooltip activator="parent" v-if="!submitting">{{ tt('Add Picture') }}</v-tooltip>
-                                                <v-icon class="import-image-add-icon" size="48" :icon="mdiImagePlusOutline" />
+                                                <v-icon class="import-image-add-icon" size="48" :aria-label="tt('Add Picture')" :icon="mdiImagePlusOutline" />
                                             </v-avatar>
                                         </div>
                                     </div>
@@ -287,6 +298,7 @@
                         <import-transaction-define-column-tab
                             ref="importTransactionDefineColumnTab"
                             :parsed-file-data="parsedFileData"
+                            :parsed-file-column-separator="parsedFileColumnSeparator"
                             :disabled="loading || submitting"
                         />
                     </v-window-item>
@@ -314,8 +326,35 @@
                     </v-window-item>
                     <v-window-item value="finalResult">
                         <div class="mx-4 my-4">
-                            <v-alert type="success" color="success-darken-1" variant="tonal">{{ tt('Data Import Completed') }}</v-alert>
-                            <div class="text-body-large my-4">{{ tt('format.misc.importTransactionResult', { count: formatNumberToLocalizedNumerals(importedCount || 0) }) }}</div>
+                            <v-alert class="my-4" type="warning" variant="tonal"
+                                     v-if="importResultUnknown">{{ tt('The import result could not be confirmed. Check the result before importing again to avoid duplicate transactions.') }}</v-alert>
+                            <v-alert class="my-4" type="error" variant="tonal"
+                                     v-else-if="importErrorMessage">{{ tt('format.misc.importTransactionStoppedWithCause', { cause: importErrorMessage }) }}</v-alert>
+                            <v-alert class="my-4" type="success" color="success-darken-1" variant="tonal"
+                                     v-else-if="!importResultUnknown && !importErrorMessage">{{ tt('Data Import Completed') }}</v-alert>
+
+                            <div class="text-body-large"
+                                 v-if="!importResultUnknown">{{ tt('format.misc.importTransactionBatchResult', { count: formatNumberToLocalizedNumerals(importedCount || 0), totalCount: formatNumberToLocalizedNumerals(totalImportCount) }) }}</div>
+                            <div class="text-body-large"
+                                 v-if="!importResultUnknown && remainingTransactions.length">{{ tt('Would you like to view the transactions that have not been imported? Transactions already imported will be kept.') }}</div>
+
+                            <div class="mt-4">
+                                <v-btn class="me-2" color="primary" variant="tonal"
+                                       :loading="submitting" :disabled="submitting"
+                                       @click="checkImportResult(true)"
+                                       v-if="importResultUnknown">
+                                    <template #loader>
+                                        <v-progress-circular indeterminate size="20"/>
+                                    </template>
+                                    {{ tt('Check Import Result') }}
+                                </v-btn>
+                                <v-btn class="me-2" color="primary" variant="tonal"
+                                       @click="showRemainingTransactions"
+                                       v-else-if="remainingTransactions.length">{{ tt('View Transactions Not Imported') }}</v-btn>
+                                <v-btn color="secondary" variant="tonal"
+                                       :disabled="submitting"
+                                       @click="close(true)">{{ tt('Close') }}</v-btn>
+                            </div>
                         </div>
                     </v-window-item>
                 </v-window>
@@ -371,11 +410,13 @@ import {
     KnownFileType
 } from '@/core/file.ts';
 import { ImageUploadQualityType } from '@/core/image.ts';
+import type { ErrorResponse } from '@/core/api.ts';
 import { UTF_8 } from '@/consts/file.ts';
 
+import type { TransactionImportResponse } from '@/models/transaction.ts';
 import { type ImportTransactionResponse, ImportTransaction } from '@/models/imported_transaction.ts';
 
-import { isDefined, isNumber } from '@/lib/common.ts';
+import { isDefined, isInteger, objectFieldWithValueToArrayItem } from '@/lib/common.ts';
 import { findExtensionByType, isFileExtensionSupported, detectFileEncoding } from '@/lib/file.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { isTransactionFromAITextRecognitionEnabled, isTransactionFromAIImageRecognitionEnabled } from '@/lib/server_settings.ts';
@@ -478,9 +519,16 @@ const importAdditionalOptions = ref<ImportFileTypeSupportedAdditionalOptions>({}
 const importAIAdditionalPrompt = ref<string>('');
 const importImageCancelRecognizingUuid = ref<string | undefined>(undefined);
 const parsedFileData = ref<string[][] | undefined>(undefined);
+const parsedFileColumnSeparator = ref<string | undefined>(undefined);
 const importTransactions = ref<ImportTransaction[] | undefined>(undefined);
 
 const importedCount = ref<number | null>(null);
+const totalImportCount = ref<number>(0);
+const importErrorMessage = ref<string>('');
+const importResultUnknown = ref<boolean>(false);
+const submittedTransactions = ref<ImportTransaction[]>([]);
+const remainingTransactions = ref<ImportTransaction[]>([]);
+const hasImportedTransactions = ref<boolean>(false);
 const loading = ref<boolean>(true);
 const submitting = ref<boolean>(false);
 
@@ -688,11 +736,19 @@ function open(): Promise<void> {
     processCustomFileFormatMethod.value = ImportCustomFileFormatProcessMethod.ColumnMapping;
     currentStep.value = 'uploadFile';
     importProcess.value = 0;
+    importedCount.value = null;
+    totalImportCount.value = 0;
+    importErrorMessage.value = '';
+    importResultUnknown.value = false;
+    submittedTransactions.value = [];
+    remainingTransactions.value = [];
+    hasImportedTransactions.value = false;
     importFile.value = null;
     importData.value = '';
     importAdditionalOptions.value = Object.assign({}, supportedAdditionalOptions.value ?? {});
     importAIAdditionalPrompt.value = '';
     parsedFileData.value = undefined;
+    parsedFileColumnSeparator.value = undefined;
     importTransactionDefineColumnTab.value?.reset();
     importTransactionExecuteCustomScriptTab.value?.reset();
     importTransactions.value = undefined;
@@ -776,6 +832,13 @@ function setImportFile(event: Event): void {
             });
         }
     }
+}
+
+function invalidateImportedData(): void {
+    accountsStore.updateAccountListInvalidState(true);
+    transactionsStore.updateTransactionListInvalidState(true);
+    overviewStore.updateTransactionOverviewInvalidState(true);
+    statisticsStore.updateTransactionStatisticsInvalidState(true);
 }
 
 function removeImportImageFile(index: number): void {
@@ -1047,6 +1110,15 @@ function parseData(): void {
 
     if (isCustomFileFormat.value && currentStep.value === 'uploadFile') {
         submitting.value = true;
+        let columnSeparator: string | undefined = undefined;
+
+        if (type === 'custom_csv') {
+            columnSeparator = ',';
+        } else if (type === 'custom_tsv') {
+            columnSeparator = '\t';
+        } else if (type === 'custom_ssv') {
+            columnSeparator = ';';
+        }
 
         transactionsStore.parseImportCustomFile({
             fileType: type,
@@ -1057,14 +1129,17 @@ function parseData(): void {
                 if (processCustomFileFormatMethod.value === ImportCustomFileFormatProcessMethod.CustomScript) {
                     importTransactionExecuteCustomScriptTab.value?.reset();
                     parsedFileData.value = response;
+                    parsedFileColumnSeparator.value = columnSeparator;
                     currentStep.value = 'executeCustomScript';
                 } else {
                     importTransactionDefineColumnTab.value?.reset();
                     parsedFileData.value = response;
+                    parsedFileColumnSeparator.value = columnSeparator;
                     currentStep.value = 'defineColumn';
                 }
             } else {
                 parsedFileData.value = undefined;
+                parsedFileColumnSeparator.value = undefined;
                 snackbar.value?.showError('No data to import');
             }
 
@@ -1166,6 +1241,14 @@ function parseData(): void {
     }
 }
 
+function batchApplyRules(): void {
+    if (importTransactionCheckDataTab.value?.isEditing) {
+        return;
+    }
+
+    importTransactionCheckDataTab.value?.showBatchApplyRulesDialog();
+}
+
 function submit(): void {
     if (importTransactionCheckDataTab.value?.isEditing) {
         return;
@@ -1193,36 +1276,34 @@ function submit(): void {
         count: formatNumberToLocalizedNumerals(transactions.length)
     }).then(() => {
         submitting.value = true;
+        clientSessionId.value = generateRandomUUID();
+        submittedTransactions.value = transactions;
+        totalImportCount.value = transactions.length;
+        importedCount.value = null;
+        importErrorMessage.value = '';
+        importResultUnknown.value = false;
+        importProcess.value = 0;
+        remainingTransactions.value = [];
 
         let showProcessTimer : number | undefined = undefined;
 
         if (transactions.length > 100) {
-            setTimeout(() => {
-                if (!submitting.value) {
-                    logger.warn('transaction import is not submitting');
-                    return;
-                }
+            const sessionId = clientSessionId.value;
 
-                // @ts-expect-error the return value of setInterval is number, but lint shows it as NodeJS.Timer
-                showProcessTimer = setInterval(() => {
-                    if (submitting.value) {
-                        transactionsStore.getImportTransactionsProcess({
-                            clientSessionId: clientSessionId.value
-                        }).then(response => {
-                            if (isNumber(response) && 0 <= response && response < 100) {
-                                importProcess.value = response;
-                            } else {
-                                importProcess.value = 0;
-                                clearInterval(showProcessTimer);
-                                showProcessTimer = undefined;
-                            }
-                        }).catch(() => {
-                            importProcess.value = 0;
-                            clearInterval(showProcessTimer);
-                            showProcessTimer = undefined;
-                        });
+            showProcessTimer = window.setInterval(() => {
+                transactionsStore.getImportTransactionsProcess({
+                    clientSessionId: sessionId
+                }).then(response => {
+                    if (submitting.value && clientSessionId.value === sessionId && response && isInteger(response.importedCount)
+                        && response.totalCount === transactions.length
+                        && 0 <= response.importedCount && response.importedCount < response.totalCount) {
+                        importProcess.value = response.importedCount / response.totalCount * 100;
                     }
-                }, 2000);
+                }).catch(() => {
+                    importProcess.value = 0;
+                    clearInterval(showProcessTimer);
+                    showProcessTimer = undefined;
+                });
             }, 2000);
         }
 
@@ -1236,14 +1317,7 @@ function submit(): void {
                 showProcessTimer = undefined;
             }
 
-            importedCount.value = response;
-            currentStep.value = 'finalResult';
-
-            accountsStore.updateAccountListInvalidState(true);
-            transactionsStore.updateTransactionListInvalidState(true);
-            overviewStore.updateTransactionOverviewInvalidState(true);
-            statisticsStore.updateTransactionStatisticsInvalidState(true);
-
+            showImportResult(response);
             submitting.value = false;
         }).catch(error => {
             if (showProcessTimer) {
@@ -1254,15 +1328,86 @@ function submit(): void {
 
             submitting.value = false;
 
-            if (!error.processed) {
-                snackbar.value?.showError(error);
+            if (error.resultUnknown === false && error.error) {
+                showImportResult({
+                    finished: true,
+                    importedCount: error.error.context?.importedCount ?? 0,
+                    totalCount: error.error.context?.totalCount ?? submittedTransactions.value.length
+                }, error.error);
+            } else {
+                importResultUnknown.value = true;
+                currentStep.value = 'finalResult';
+                invalidateImportedData();
+                checkImportResult(false);
             }
         });
     });
 }
 
+function showImportResult(result: TransactionImportResponse, error?: ErrorResponse): void {
+    currentStep.value = 'finalResult';
+
+    if (!result.finished || result.totalCount !== submittedTransactions.value.length || !isInteger(result.importedCount) || result.importedCount < 0 || result.importedCount > result.totalCount || (!error && result.importedCount !== result.totalCount)) {
+        importResultUnknown.value = true;
+        invalidateImportedData();
+        return;
+    }
+
+    importResultUnknown.value = false;
+    importedCount.value = result.importedCount;
+    totalImportCount.value = result.totalCount;
+    remainingTransactions.value = submittedTransactions.value.slice(result.importedCount);
+    importErrorMessage.value = error ? te({ error: error }) : '';
+
+    if (result.importedCount > 0) {
+        hasImportedTransactions.value = true;
+        invalidateImportedData();
+    }
+}
+
+function checkImportResult(force: boolean): void {
+    submitting.value = true;
+
+    transactionsStore.getImportTransactionsProcess({
+        clientSessionId: clientSessionId.value,
+        force: force
+    }).then(response => {
+        if (response && response.finished) {
+            showImportResult(response);
+        }
+    }).catch(error => {
+        logger.error('failed to confirm transaction import result', error);
+
+        if (error.processed) {
+            return;
+        }
+
+        if (isDefined(error.error?.context?.importedCount) && isDefined(error.error?.context?.totalCount)) {
+            showImportResult({
+                finished: true,
+                importedCount: error.error.context?.importedCount ?? 0,
+                totalCount: error.error.context?.totalCount ?? submittedTransactions.value.length
+            }, error.error);
+        } else if (force) {
+            snackbar.value?.showError(error);
+        }
+    }).finally(() => {
+        submitting.value = false;
+    });
+}
+
+function showRemainingTransactions(): void {
+    importTransactions.value = remainingTransactions.value;
+    importTransactionCheckDataTab.value?.reset();
+    currentStep.value = 'checkData';
+}
+
 function close(completed: boolean): void {
-    if (completed) {
+    if (importResultUnknown.value) {
+        invalidateImportedData();
+    }
+
+    if (completed || hasImportedTransactions.value || importResultUnknown.value) {
         if (resolveFunc) {
             resolveFunc();
         }
@@ -1292,6 +1437,7 @@ watch(fileType, (newValue) => {
 
     importFile.value = null;
     parsedFileData.value = undefined;
+    parsedFileColumnSeparator.value = undefined;
     importAdditionalOptions.value = Object.assign({}, supportedAdditionalOptions.value ?? {});
     importTransactions.value = undefined;
     clearImportImageFiles();

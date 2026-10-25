@@ -75,6 +75,7 @@ import type {
     TransactionDeleteRequest,
     TransactionBatchDeleteRequest,
     TransactionImportRequest,
+    TransactionImportResponse,
     TransactionListByMaxTimeRequest,
     TransactionListInMonthByPageRequest,
     TransactionAllListRequest,
@@ -83,6 +84,8 @@ import type {
     TransactionInfoPageWrapperResponse2,
     TransactionReconciliationStatementRequest,
     TransactionReconciliationStatementResponse,
+    TransactionUnreconciledCountRequest,
+    TransactionUnreconciledCountResponse,
     TransactionStatisticRequest,
     TransactionStatisticResponse,
     TransactionStatisticTrendsRequest,
@@ -179,7 +182,9 @@ import type {
     UserApplicationCloudSettingsUpdateRequest
 } from '@/models/user_app_cloud_setting.ts';
 import type {
-    RecognizedTransactionResponse
+    RecognizedTransactionResponse,
+    CodingAssistantRequest,
+    CodingAssistantResponse
 } from '@/models/large_language_model.ts';
 import type {
     UserCustomIconInfoResponse,
@@ -275,7 +280,7 @@ axios.interceptors.response.use(response => {
 
     return response;
 }, error => {
-    if ('cancelableUuid' in error.response.config && error.response.config.cancelableUuid && cancelableRequests[error.response.config.cancelableUuid]) {
+    if (error.response && 'cancelableUuid' in error.response.config && error.response.config.cancelableUuid && cancelableRequests[error.response.config.cancelableUuid]) {
         logger.debug('Response canceled by user request, url: ' + error.response.config.url + ', cancelableUuid: ' + error.response.config.cancelableUuid);
         delete cancelableRequests[error.response.config.cancelableUuid];
         return Promise.reject({ canceled: true });
@@ -547,6 +552,9 @@ export default {
     getReconciliationStatements: (req: TransactionReconciliationStatementRequest): ApiResponsePromise<TransactionReconciliationStatementResponse> => {
         return axios.get<ApiResponse<TransactionReconciliationStatementResponse>>(`v1/transactions/reconciliation_statements.json?account_id=${req.accountId}&start_time=${req.startTime}&end_time=${req.endTime}`);
     },
+    getUnreconciledTransactionCounts: (req: TransactionUnreconciledCountRequest): ApiResponsePromise<TransactionUnreconciledCountResponse> => {
+        return axios.get<ApiResponse<TransactionUnreconciledCountResponse>>(`v1/transactions/unreconciled_transaction_counts.json?account_ids=${req.accountIds.join(',')}`);
+    },
     getTransactionStatistics: (req: TransactionStatisticRequest): ApiResponsePromise<TransactionStatisticResponse> => {
         const queryParams: string[] = [];
 
@@ -610,7 +618,7 @@ export default {
 
         return axios.get<ApiResponse<TransactionStatisticAssetTrendsResponseItem[]>>('v1/transactions/statistics/asset_trends.json' + (queryParams.length ? '?' + queryParams.join('&') : ''));
     },
-    getTransactionAmounts: (params: TransactionAmountsRequestParams, excludeAccountIds: string[], excludeCategoryIds: string[]): ApiResponsePromise<TransactionAmountsResponse> => {
+    getTransactionAmounts: (params: TransactionAmountsRequestParams, excludeAccountIds: string[], excludeCategoryIds: string[], tagFilter: string): ApiResponsePromise<TransactionAmountsResponse> => {
         const req = TransactionAmountsRequest.of(params);
         let queryParams = req.buildQuery();
 
@@ -620,6 +628,10 @@ export default {
 
         if (excludeCategoryIds && excludeCategoryIds.length) {
             queryParams = queryParams + `&exclude_category_ids=${excludeCategoryIds.join(',')}`;
+        }
+
+        if (tagFilter) {
+            queryParams = queryParams + `&tag_filter=${encodeURIComponent(tagFilter)}`;
         }
 
         return axios.get<ApiResponse<TransactionAmountsResponse>>(`v1/transactions/amounts.json?${queryParams}`);
@@ -637,6 +649,10 @@ export default {
 
         if (req.excludeCategoryIds.length) {
             queryParams.push(`exclude_category_ids=${req.excludeCategoryIds.join(',')}`);
+        }
+
+        if (req.tagFilter) {
+            queryParams.push(`tag_filter=${encodeURIComponent(req.tagFilter)}`);
         }
 
         return axios.get<ApiResponse<TransactionDailyAmountsResponseItem[]>>(`v1/transactions/amounts/daily.json?${queryParams.join('&')}`);
@@ -748,13 +764,13 @@ export default {
             cancelableUuid: cancelableUuid
         } as ApiRequestConfig);
     },
-    importTransactions: (req: TransactionImportRequest): ApiResponsePromise<number> => {
-        return axios.post<ApiResponse<number>>('v1/transactions/import.json', req, {
+    importTransactions: (req: TransactionImportRequest): ApiResponsePromise<TransactionImportResponse> => {
+        return axios.post<ApiResponse<TransactionImportResponse>>('v1/transactions/import.json', req, {
             timeout: DEFAULT_IMPORT_API_TIMEOUT
         } as ApiRequestConfig);
     },
-    getImportTransactionsProcess: (clientSessionId: string): ApiResponsePromise<number | null> => {
-        return axios.get<ApiResponse<number | null>>('v1/transactions/import/process.json?client_session_id=' + clientSessionId, {
+    getImportTransactionsProcess: (clientSessionId: string): ApiResponsePromise<TransactionImportResponse | null> => {
+        return axios.get<ApiResponse<TransactionImportResponse | null>>('v1/transactions/import/process.json?client_session_id=' + clientSessionId, {
             ignoreError: true
         } as ApiRequestConfig);
     },
@@ -888,6 +904,12 @@ export default {
         return axios.postForm<ApiResponse<RecognizedTransactionResponse>>('v1/llm/transactions/recognize_receipt_image.json', {
             image: imageFile
         }, {
+            timeout: DEFAULT_LLM_API_TIMEOUT,
+            cancelableUuid: cancelableUuid
+        } as ApiRequestConfig);
+    },
+    generateCode: (req: CodingAssistantRequest, cancelableUuid?: string): ApiResponsePromise<CodingAssistantResponse> => {
+        return axios.post<ApiResponse<CodingAssistantResponse>>('v1/llm/code/generate.json', req, {
             timeout: DEFAULT_LLM_API_TIMEOUT,
             cancelableUuid: cancelableUuid
         } as ApiRequestConfig);

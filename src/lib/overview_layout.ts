@@ -1,8 +1,10 @@
-import { type PartialRecord, entries, keys } from '@/core/base.ts';
+import { type PartialRecord, entries } from '@/core/base.ts';
 import {
     type OverviewWidgetSettingValue,
     type OverviewWidgetSettingItem,
     type OverviewWidgetDefinitionBase,
+    type OverviewWidgetSettingContext,
+    type OverviewRecentTransactionsQuery,
     type OverviewLayoutBase,
     type OverviewWidgetLayoutBase,
     type DesktopOverviewLayout,
@@ -21,8 +23,12 @@ import {
     DEFAULT_DESKTOP_OVERVIEW_LAYOUT,
     MOBILE_OVERVIEW_LAYOUT_MAX_WIDGETS,
     MOBILE_OVERVIEW_WIDGET_DEFINITIONS,
-    DEFAULT_MOBILE_OVERVIEW_LAYOUT
+    DEFAULT_MOBILE_OVERVIEW_LAYOUT,
+    RECENT_TRANSACTIONS_WIDGET_DEFAULT_ITEM_COUNT
 } from '@/consts/overview_layout.ts';
+
+import { AmountFilterType } from '@/core/numeral.ts';
+import { TransactionTagFilter } from '@/models/transaction.ts';
 
 import {
     isDefined,
@@ -30,11 +36,17 @@ import {
     isArray,
     isString,
     isNumber,
-    isBoolean,
     isInteger,
+    isBoolean,
     isHextualColor,
-    normalizeInteger
+    normalizeInteger,
+    objectFieldToArrayItem
 } from '@/lib/common.ts';
+
+import {
+    isTransactionFromAITextRecognitionEnabled,
+    isTransactionFromAIImageRecognitionEnabled
+} from '@/lib/server_settings.ts';
 
 function normalizeOverviewWidgetSettings(definition: OverviewWidgetDefinitionBase, settings: unknown): Record<string, OverviewWidgetSettingValue> {
     const normalized = { ...definition.defaultSettings };
@@ -62,6 +74,12 @@ function normalizeOverviewWidgetSetting(setting: OverviewWidgetSettingItem, valu
         return isInteger(value) && setting.itemCountValues.includes(value) ? value : undefined;
     } else if (setting.settingType === 'monthSelect') {
         return isInteger(value) && setting.monthValues.includes(value) ? value : undefined;
+    } else if (setting.settingType === 'accountSelect') {
+        return isArray(value) ? value.filter(id => isString(id)) : undefined;
+    } else if (setting.settingType === 'categorySelect') {
+        return isArray(value) ? value.filter(id => isString(id)) : undefined;
+    } else if (setting.settingType === 'tagSelect') {
+        return isString(value) && TransactionTagFilter.parse(value) ? value : undefined;
     } else if (setting.settingType === 'customSelect') {
         if (!setting.multiple) {
             return (isString(value) || isNumber(value)) && setting.selectValues.some(item => item.value === value) ? value : undefined;
@@ -90,7 +108,7 @@ function normalizeOverviewWidgetSetting(setting: OverviewWidgetSettingItem, valu
                 }
             }
 
-            return selectedValues.length ? selectedValues : undefined;
+            return selectedValues.length >= (setting.minSelections ?? 1) ? selectedValues : undefined;
         } else {
             return undefined;
         }
@@ -98,6 +116,10 @@ function normalizeOverviewWidgetSetting(setting: OverviewWidgetSettingItem, valu
         return isBoolean(value) ? value : undefined;
     } else if (setting.settingType === 'color') {
         return isHextualColor(value) ? value.toLowerCase() : undefined;
+    } else if (setting.settingType === 'amount') {
+        return isInteger(value) ? value : undefined;
+    } else if (setting.settingType === 'amountFilter') {
+        return isString(value) && AmountFilterType.parseTextualFilter(value) ? value : undefined;
     } else if (setting.settingType === 'textbox') {
         return isString(value) ? value : undefined;
     } else {
@@ -135,9 +157,8 @@ export function cloneWidget<T extends OverviewWidgetLayoutBase>(widget: T): T {
     return { ...widget, settings };
 }
 
-export function getOverviewDataRequirements(layout: OverviewLayoutBase, definitions: PartialRecord<OverviewWidgetType, OverviewWidgetDefinitionBase>): OverviewWidgetDataRequirement[] {
-    const requirements: Record<string, boolean> = {};
-    const result: OverviewWidgetDataRequirement[] = [];
+export function getOverviewDataRequirements(layout: OverviewLayoutBase, definitions: PartialRecord<OverviewWidgetType, OverviewWidgetDefinitionBase>): PartialRecord<OverviewWidgetDataRequirement, boolean> {
+    const requirements: PartialRecord<OverviewWidgetDataRequirement, boolean> = {};
 
     for (const widget of layout.widgets) {
         const definition = definitions[widget.type];
@@ -159,13 +180,14 @@ export function getOverviewDataRequirements(layout: OverviewLayoutBase, definiti
         requirements[OverviewWidgetDataRequirement.TransactionOverview] = true;
     }
 
-    for (const requirement of keys(requirements)) {
-        if (requirements[requirement]) {
-            result.push(requirement as OverviewWidgetDataRequirement);
-        }
-    }
+    return requirements;
+}
 
-    return result;
+export function getOverviewWidgetSettingContext(): OverviewWidgetSettingContext {
+    return {
+        aiTextRecognitionEnabled: isTransactionFromAITextRecognitionEnabled(),
+        aiImageRecognitionEnabled: isTransactionFromAIImageRecognitionEnabled()
+    };
 }
 
 export function getOverviewTransactionOverviewMonths(layout: OverviewLayoutBase): number {
@@ -186,20 +208,49 @@ export function getOverviewTransactionOverviewMonths(layout: OverviewLayoutBase)
     return months;
 }
 
-export function getOverviewRecentTransactionCount(layout: OverviewLayoutBase): number {
-    let count: number = 3;
+export function getOverviewUnreconciledTransactionAccountIds(layout: OverviewLayoutBase): string[] {
+    const accountIds: Record<string, boolean> = {};
 
     for (const widget of layout.widgets) {
-        if (widget.type === OverviewWidgetType.RecentTransactions) {
-            const countValue = widget.settings['itemCount'];
+        if (widget.type !== OverviewWidgetType.AccountUnreconciledTransactions) {
+            continue;
+        }
 
-            if (isInteger(countValue)) {
-                count = Math.max(count, countValue);
-            }
+        const widgetAccountIds = widget.settings['accountIds'];
+
+        if (!isArray(widgetAccountIds) || !widgetAccountIds.length) {
+            return [];
+        }
+
+        for (const accountId of widgetAccountIds as string[]) {
+            accountIds[accountId] = true;
         }
     }
 
-    return count;
+    return objectFieldToArrayItem(accountIds);
+}
+
+export function getOverviewRecentTransactionsQuery(settings: Record<string, OverviewWidgetSettingValue>): OverviewRecentTransactionsQuery {
+    return {
+        count: isInteger(settings['itemCount']) ? settings['itemCount'] : RECENT_TRANSACTIONS_WIDGET_DEFAULT_ITEM_COUNT,
+        accountIds: isArray(settings['accountIds']) ? settings['accountIds'] as string[] : [],
+        categoryIds: isArray(settings['categoryIds']) ? settings['categoryIds'] as string[] : [],
+        tagFilter: isString(settings['tagFilter']) ? settings['tagFilter'] : '',
+        amountFilter: isString(settings['amountFilter']) ? settings['amountFilter'] : '',
+        keyword: isString(settings['keyword']) ? settings['keyword'] : ''
+    };
+}
+
+export function getOverviewRecentTransactionsQueries(layout: OverviewLayoutBase): Record<string, OverviewRecentTransactionsQuery> {
+    const queries: Record<string, OverviewRecentTransactionsQuery> = {};
+
+    for (const widget of layout.widgets) {
+        if (widget.type === OverviewWidgetType.RecentTransactions) {
+            queries[widget.id] = getOverviewRecentTransactionsQuery(widget.settings);
+        }
+    }
+
+    return queries;
 }
 
 export function getOverviewAssetTrendMonths(layout: OverviewLayoutBase): number {
@@ -313,6 +364,18 @@ export function findDesktopOverviewWidgetPosition(widgets: DesktopOverviewWidget
     return { x: 0, y: Math.max(0, ...widgets.map(widget => widget.y + widget.h)) };
 }
 
+export function findDesktopOverviewWidgetDuplicatePosition(widgets: DesktopOverviewWidgetLayout[], widget: DesktopOverviewWidgetLayout): { x: number; y: number } {
+    const rightPosition = { x: widget.x + widget.w, y: widget.y };
+    const rightCandidate = { ...widget, ...rightPosition };
+
+    if (rightCandidate.x + rightCandidate.w <= DESKTOP_OVERVIEW_LAYOUT_COLUMNS &&
+        !widgets.some(currentWidget => isDesktopWidgetsOverlap(rightCandidate, currentWidget))) {
+        return rightPosition;
+    }
+
+    return { x: widget.x, y: widget.y + widget.h };
+}
+
 export function isDefaultDesktopOverviewLayout(layout: DesktopOverviewLayout): boolean {
     return serializeDesktopOverviewLayout(layout) === serializeDesktopOverviewLayout(DEFAULT_DESKTOP_OVERVIEW_LAYOUT);
 }
@@ -390,7 +453,7 @@ export function parseDesktopOverviewLayout(value: string): DesktopOverviewLayout
 
 export function serializeDesktopOverviewLayout(layout: DesktopOverviewLayout, pretty?: boolean): string {
     const normalized = normalizeDesktopOverviewLayout(layout);
-    return JSON.stringify(normalized, null, pretty ? 2 : undefined);
+    return JSON.stringify(normalized, null, pretty ? 4 : undefined);
 }
 
 export function isDefaultMobileOverviewLayout(layout: MobileOverviewLayout): boolean {

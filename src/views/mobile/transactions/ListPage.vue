@@ -16,8 +16,8 @@
                 </f7-link>
             </f7-nav-title>
             <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
-                <f7-link icon-f7="search" @click="toggleSearchbar"></f7-link>
-                <f7-link icon-f7="plus" :class="{ 'disabled': !canAddTransaction }" @click="add"></f7-link>
+                <f7-link icon-f7="search" :aria-label="tt('Search')" @click="toggleSearchbar"></f7-link>
+                <f7-link icon-f7="plus" :class="{ 'disabled': !canAddTransaction }" :aria-label="tt('Add')" @click="add"></f7-link>
             </f7-nav-right>
 
             <f7-subnavbar :inner="false" v-if="showSearchbar">
@@ -49,13 +49,13 @@
         </f7-popover>
 
         <f7-toolbar tabbar bottom class="compact-tabbar toolbar-item-auto-size transaction-list-toolbar">
-            <f7-link :class="{ 'disabled': loading || query.dateType === DateRange.All.type }" @click="shiftDateRange(query.minTime, query.maxTime, -1)">
+            <f7-link :class="{ 'disabled': loading || query.dateType === DateRange.All.type }" :aria-label="tt('Previous Period')" @click="shiftDateRange(query.minTime, query.maxTime, -1)">
                 <f7-icon class="icon-with-direction" f7="arrow_left_square"></f7-icon>
             </f7-link>
             <f7-link popover-open=".date-popover-menu" :class="{ 'tabbar-text-with-ellipsis': true, 'disabled': loading }">
                 <span :class="{ 'tabbar-item-changed': query.dateType !== DateRange.All.type }">{{ queryDateRangeName }}</span>
             </f7-link>
-            <f7-link :class="{ 'disabled': loading || query.dateType === DateRange.All.type }" @click="shiftDateRange(query.minTime, query.maxTime, 1)">
+            <f7-link :class="{ 'disabled': loading || query.dateType === DateRange.All.type }" :aria-label="tt('Next Period')" @click="shiftDateRange(query.minTime, query.maxTime, 1)">
                 <f7-icon class="icon-with-direction" f7="arrow_right_square"></f7-icon>
             </f7-link>
             <f7-link popover-open=".category-popover-menu" :class="{ 'tabbar-text-with-ellipsis': true, 'disabled': loading || query.type === 1 }">
@@ -64,19 +64,21 @@
             <f7-link popover-open=".account-popover-menu" :class="{ 'tabbar-text-with-ellipsis': true, 'disabled': loading }">
                 <span :class="{ 'tabbar-item-changed': query.accountIds }">{{ queryAccountName }}</span>
             </f7-link>
-            <f7-link popover-open=".more-popover-menu" :class="{ 'disabled': loading }">
+            <f7-link popover-open=".more-popover-menu" :class="{ 'disabled': loading }" :aria-label="tt('More')">
                 <f7-icon f7="ellipsis_vertical" :class="{ 'tabbar-item-changed': query.type > 0 || query.amountFilter || query.tagFilter }"></f7-icon>
             </f7-link>
         </f7-toolbar>
 
         <f7-block class="transaction-calendar-container" :class="{ 'margin-vertical': showSearchbar, 'margin-vertical-half': !showSearchbar }"
                   v-if="pageType === TransactionListPageType.Calendar.type">
-            <transaction-calendar calendar-class="justify-content-center" week-day-name-type="short"
+            <transaction-calendar show-amount show-income-amount show-expense-amount show-alternate-date
+                                  dates-have-any-transaction-clickable
+                                  calendar-class="justify-content-center" week-day-name-type="short"
                                   :readonly="loading" :is-dark-mode="isDarkMode"
                                   :default-currency="false"
                                   :min-date="transactionCalendarMinDate"
                                   :max-date="transactionCalendarMaxDate"
-                                  :dailyTotalAmounts="currentMonthTransactionData?.dailyTotalAmounts"
+                                  :daily-total-amounts="getDailyTotalAmounts(currentMonthTransactionData)"
                                   v-model="currentCalendarDate"></transaction-calendar>
         </f7-block>
 
@@ -193,12 +195,12 @@
                                     <small>
                                         <span>{{ getDisplayLongYearMonth(transactionMonthList) }}</span>
                                     </small>
-                                    <small class="transaction-amount-statistics" v-if="showTotalAmountInTransactionListPage && transactionMonthList.totalAmount">
+                                    <small class="transaction-amount-statistics" v-if="showTotalAmountInTransactionListPage && hasMonthTotalAmount(transactionMonthList)">
                                         <span class="text-income">
-                                            {{ getDisplayMonthTotalAmount(transactionMonthList.totalAmount.income, selectedAccountDefaultCurrency, '+', transactionMonthList.totalAmount.incompleteIncome) }}
+                                            {{ getDisplayMonthTotalAmount(transactionMonthList, '+')?.income }}
                                         </span>
                                         <span class="text-expense">
-                                            {{ getDisplayMonthTotalAmount(transactionMonthList.totalAmount.expense, selectedAccountDefaultCurrency, '-', transactionMonthList.totalAmount.incompleteExpense) }}
+                                            {{ getDisplayMonthTotalAmount(transactionMonthList, '-')?.expense }}
                                         </span>
                                     </small>
                                     <f7-icon class="combination-list-chevron-icon" :f7="transactionMonthList.opened ? 'chevron_up' : 'chevron_down'"></f7-icon>
@@ -306,6 +308,7 @@
                                                     v-if="transaction.editable"
                                                     @click="edit(transaction)"></f7-swipeout-button>
                                 <f7-swipeout-button color="red" class="padding-horizontal"
+                                                    :aria-label="tt('Delete')"
                                                     v-if="transaction.editable"
                                                     @click="remove(transaction, false)">
                                     <f7-icon f7="trash"></f7-icon>
@@ -770,11 +773,13 @@ const {
     hasVisibleTagsInTagGroup,
     isSameAsDefaultTimezoneOffsetMinutes,
     canAddTransaction,
+    hasMonthTotalAmount,
+    getDailyTotalAmounts,
+    getDisplayMonthTotalAmount,
     getDisplayTime,
     getDisplayLongYearMonth,
     getDisplayTimezone,
     getDisplayAmount,
-    getDisplayMonthTotalAmount,
     getTransactionTypeName,
     getTransactionPictureUrl
 } = useTransactionListPageBase();
@@ -827,13 +832,22 @@ const transactions = computed<TransactionMonthList[]>(() => {
                 yearDashMonth: currentMonthTransactionData.value.yearDashMonth,
                 opened: true,
                 items: transactions,
-                totalAmount: {
+                inflowOutflowTotalAmount: {
+                    transactionCount: transactions.length,
                     income: BIG_DECIMAL_ZERO,
                     expense: BIG_DECIMAL_ZERO,
                     incompleteIncome: false,
                     incompleteExpense: false
                 },
-                dailyTotalAmounts: {}
+                inflowOutflowDailyTotalAmounts: {},
+                incomeExpenseTotalAmount: {
+                    transactionCount: transactions.length,
+                    income: BIG_DECIMAL_ZERO,
+                    expense: BIG_DECIMAL_ZERO,
+                    incompleteIncome: false,
+                    incompleteExpense: false
+                },
+                incomeExpenseDailyTotalAmounts: {}
             };
 
             return [dailyTransactionList];
@@ -1690,80 +1704,6 @@ html[dir="rtl"] .list.transaction-info-list li.transaction-info .transaction-foo
         overflow: hidden;
         text-overflow: ellipsis;
     }
-}
-
-.transaction-calendar-container .dp--theme-light,
-.transaction-calendar-container .dp--theme-dark {
-    --dp-background-color: var(--f7-list-strong-bg-color);
-}
-
-.transaction-calendar-container .dp--main .dp--menu {
-    --dp-border-radius: var(--f7-list-inset-border-radius);
-    --dp-menu-padding: 4px 6px;
-    --dp-menu-border-color: transparent;
-}
-
-.transaction-calendar-container .dp--main .dp--menu.dp--theme-dark {
-    --dp-background-color: var(--f7-list-strong-bg-color);
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row {
-    --dp-cell-size: var(--ebk-transaction-calendar-daily-amounts-height);
-    --dp-cell-padding: 1px;
-    --dp-primary-text-color: var(--f7-theme-color);
-}
-
-.transaction-calendar-container .dp--main.transaction-calendar-with-alternate-date .dp--calendar .dp--calendar-row {
-    --dp-cell-size: var(--ebk-transaction-calendar-with-alternate-date-daily-amounts-height);
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item .transaction-calendar-daily-amounts {
-    width: 100%;
-    height: 100%;
-    background-color: var(--f7-list-group-title-bg-color);
-    border-radius: 6px;
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--active {
-    background-color: transparent;
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--today {
-    border: inherit;
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--date-hoverable-end:hover,
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--date-hoverable-start:hover,
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--date-hoverable:hover {
-    background-color: transparent;
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--active .transaction-calendar-daily-amounts {
-    background-color: rgba(var(--ebk-primary-color), 0.16);
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--today .transaction-calendar-daily-amounts {
-    border: 1px solid var(--dp-primary-color);
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--date-hoverable-end:hover .transaction-calendar-daily-amounts,
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--date-hoverable-start:hover .transaction-calendar-daily-amounts,
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item > .dp--date-hoverable:hover .transaction-calendar-daily-amounts {
-    background: var(--dp-hover-color);
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item .transaction-calendar-daily-amounts > span.transaction-calendar-alternate-date {
-    font-size: var(--ebk-transaction-calendar-alternate-date-font-size);
-}
-
-.transaction-calendar-container .dp--main .dp--calendar .dp--calendar-row > .dp--calendar-item .transaction-calendar-daily-amounts > span.transaction-calendar-daily-amount {
-    font-size: var(--ebk-transaction-calendar-amount-font-size);
 }
 
 .transaction-gallery-list.list > ul {
